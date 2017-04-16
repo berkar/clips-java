@@ -1,0 +1,5 @@
+-source src/test/test.mp4 -start 00:00:00 -stop 10 -result target/1-result.mp4
+#-source src/test/test.mp4 -start 00:00:00 -stop 10 -result target/2-result.mp4 -audio off
+#-source src/test/test.mp4 -start 00:00:00 -stop 10 -result target/3-result.mp4 -audio src/test/music.mp3
+#-source src/test/test.mp4 -start 00:00:00 -stop 10 -result target/4-result.mp4 -audio src/test/music.mp3 -fade 3
+#-source src/test/test.mp4 -start 00:00:00 -stop 10 -result target/5-result.mp4 -audio src/test/music.mp3 -fade 3 -deshark 3
