@@ -1,3 +1,6 @@
 1. The call on where to find ffmpeg, needs to be more flexible!
 
+- Set ffmpeg in my ~/bin/ as: ln -s /home/berkar63/ffmpeg-3.2.4-64bit-static/ffmpeg ffmpeg 
+
 2. The bash file can be done more better
+

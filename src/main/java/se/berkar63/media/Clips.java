@@ -12,8 +12,7 @@ import java.util.List;
 
 public class Clips {
 
-    // TODO Needs to be more configuration on this!
-    static String itsFfmpeg = "/home/berkar63/ffmpeg-3.2.4-64bit-static/ffmpeg";
+    static String itsFfmpeg = "ffmpeg";
 
     /**
      * Class for handling of the row that sets in the (default) init.txt
@@ -58,7 +57,7 @@ public class Clips {
                             case "-audio":
                                 itsAudio = aValue;
                                 // Check if it exists
-                                if (!isFileAvailable(itsAudio)) {
+                                if (!itsAudio.equalsIgnoreCase("off") && !isFileAvailable(itsAudio)) {
                                     itsOk = false;
                                 }
                                 break;
