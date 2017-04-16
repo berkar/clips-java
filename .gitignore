@@ -1,0 +1,81 @@
+# Subversion #
+###################
+.svn
+
+# NPM/Bower #
+###################
+node_modules
+bower_components
+
+# QGIS #
+###################
+*.qgs
+
+# Enterprise Architect files/dirs #
+###################
+*.ldb
+
+# Eclipse files/dirs #
+###################
+.classpath
+.project
+.settings
+.tern-project
+
+# IDEA files/dirs #
+###################
+.idea
+*.iml
+
+# Vagrant files/dirs #
+###################
+.vagrant
+
+# Maven files/dirs #
+###################
+target
+*.versionsBackup
+
+# Visual Studio files #
+#######################
+Web.config
+
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.rar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+*.sqlite
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+/.settings/
+/.project
+web/.externalToolBuilders/org.eclipse.m2e.core.maven2Builder.launch
+web/test-results.xml
