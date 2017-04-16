@@ -1,0 +1,3 @@
+1. The call on where to find ffmpeg, needs to be more flexible!
+
+2. The bash file can be done more better
