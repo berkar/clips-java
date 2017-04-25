@@ -8,30 +8,44 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
+/**
+ * Useful links that helps with file and/or ffmpeg usage:
+ * <p>
+ * - https://www.labnol.org/internet/useful-ffmpeg-commands/28490/
+ * - http://www.tecmint.com/ffmpeg-commands-for-video-audio-and-image-conversion-in-linux/
+ * - http://www.oodlestechnologies.com/blogs/8-Useful-FFmpeg-Commands-For-Beginners
+ * - https://www.maketecheasier.com/ffmpeg-commands-media-file-conversions/
+ * <p>
+ * Description of row:
+ * -source Test-I.avi -result Test-I.mp4 [-start hh:mm:ss] [-stop hh:mm:ss | -length SECs] [-audio [off | Music-file]] [-fade SECs] [-deshark [1 - 6]]
+ */
 public class Clips {
 
-    static String itsFfmpeg = "ffmpeg";
+    private static String itsFfmpeg = "ffmpeg";
 
     /**
      * Class for handling of the row that sets in the (default) init.txt
      */
     class Row {
-        String itsInfile;
-        String itsStart;
-        String itsStop;
-        String itsOutfile;
-        String itsAudio;
-        String itsFade;
-        Integer itsDeshark;
+        String itsInfile;   // Video to start with
+        String itsStart;    // hh:MM:ss
+        String itsStop;     // hh:MM:ss
+        String itsLength;   // Number of seconds
+        String itsOutfile;  // The vidoe to fix
+        String itsAudio;    // Audio either off or the music to use
+        String itsFade;     // Fading on bort audio and video, both in/out
+        Integer itsDeshark; // Which anti value, to deshark with
 
         Boolean itsOk = true;
+        String itsMessage = "OK";
 
-        public Row(String theRow) {
+        Row(String theRow) {
             // -source test/test.mp4 -result target/test.mp4 -start 00:01:25 -stop 30 -audio off -fade off
-            String[] aTmp = theRow.split(" ");
-            if (aTmp != null) {
+            if (theRow != null) {
+                String[] aTmp = theRow.split(" ");
                 int aCount = 0;
                 while (aCount < aTmp.length) {
                     if (aTmp[aCount].startsWith("-")) {
@@ -43,6 +57,7 @@ public class Clips {
                                 // Check if it exists
                                 if (!isFileAvailable(itsInfile)) {
                                     itsOk = false;
+                                    itsMessage = "The -source file cannot be found!";
                                 }
                                 break;
                             case "-result":
@@ -54,11 +69,15 @@ public class Clips {
                             case "-stop":
                                 itsStop = aValue;
                                 break;
+                            case "-length":
+                                itsLength = aValue;
+                                break;
                             case "-audio":
                                 itsAudio = aValue;
                                 // Check if it exists
                                 if (!itsAudio.equalsIgnoreCase("off") && !isFileAvailable(itsAudio)) {
                                     itsOk = false;
+                                    itsMessage = "The -audio file cannot be found!";
                                 }
                                 break;
                             case "-fade":
@@ -70,12 +89,29 @@ public class Clips {
                         }
                     }
                 }
+                if (itsOk && itsFade != null && itsStop == null && itsLength == null) {
+                    itsOk = false;
+                    itsMessage = "The -stop OR -length is required when -fade is set!";
+                }
+                if (itsOk && itsStop != null && itsLength != null) {
+                    itsOk = false;
+                    itsMessage = "Either -stop OR -length can uses! Not both ...";
+                }
+            } else {
+                itsOk = false;
+                itsMessage = "No Row given!";
             }
         }
 
         @Override
         public String toString() {
-            return "-source " + itsInfile + " -result " + itsOutfile + " -start " + itsStart + " -stop " + itsStop + (itsAudio != null ? (" -audio " + itsAudio) : "") + (itsFade != null ? (" -fade " + itsFade) : "");
+            return "-source " + itsInfile + " -result " + itsOutfile +
+                    (itsStart != null ? (" -start " + itsStart) : "") +
+                    (itsStop != null ? (" -stop " + itsStop) : "") +
+                    (itsAudio != null ? (" -audio " + itsAudio) : "") +
+                    (itsLength != null ? (" -length " + itsLength) : "") +
+                    (itsFade != null ? (" -fade " + itsFade) : "") +
+                    (itsDeshark != null ? (" -deshark " + itsDeshark) : "");
         }
     }
 
@@ -129,7 +165,7 @@ public class Clips {
             return toStringWithPostfix(itsPostfix);
         }
 
-        public String toStringWithPostfix(String thePostfix) {
+        String toStringWithPostfix(String thePostfix) {
             return (itsPath != null ? (itsPath + "/") : "") + itsName + "_" + itsCounter + "." + thePostfix;
         }
     }
@@ -137,7 +173,7 @@ public class Clips {
     /**
      * Read from the applied  configuration file, e.g. init.txt
      */
-    Row[] init(String theInitFilename) {
+    private Row[] init(String theInitFilename) throws IOException {
         BufferedReader br = null;
         List<Row> aRowList = new ArrayList<>();
 
@@ -151,11 +187,11 @@ public class Clips {
                     Row aRow = new Row(aCurrentLine);
                     if (aRow.itsOk) {
                         aRowList.add(aRow);
+                    } else {
+                        System.err.println("\t" + aRow.itsMessage + " => [" + aRow.toString() + "]");
                     }
                 }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         } finally {
             try {
                 if (br != null) {
@@ -170,57 +206,95 @@ public class Clips {
     }
 
     /**
+     * Take care of the first sub-request, from the request
+     */
+    private static void processStart(TmpFilename theTmpFilename, Row theRow) throws InterruptedException, IOException {
+        List<String> aArgumentList = new ArrayList<>();
+
+        aArgumentList.add(itsFfmpeg);
+
+        aArgumentList.add("-i");
+        aArgumentList.add(theRow.itsInfile);
+
+        aArgumentList.add("-c");
+        aArgumentList.add("copy");
+
+        aArgumentList.add("-y");
+
+        // Check if the start time is given
+        if (theRow.itsStart != null && theRow.itsStart.trim().length() > 0) {
+            aArgumentList.add("-ss");
+            aArgumentList.add(theRow.itsStart);
+        }
+
+        // Check if the stop time is given
+        if (theRow.itsStop != null && theRow.itsStop.trim().length() > 0) {
+            // Check if stop time is time with 00:00:00 or 00 as secs
+            aArgumentList.add("-to");
+            aArgumentList.add(theRow.itsStop);
+        }
+
+        // Check if the length is given
+        if (theRow.itsLength != null && theRow.itsLength.trim().length() > 0) {
+            // Found seconds to use
+            aArgumentList.add("-t");
+            aArgumentList.add(theRow.itsLength);
+        }
+
+        if (theTmpFilename != null) {
+            aArgumentList.add(theTmpFilename.toString());
+        }
+
+        Process aCommand = new ProcessBuilder(aArgumentList).start();
+        aCommand.waitFor();
+    }
+
+    /**
      * Take care of each sub-request, from the request
      */
-    static void process(TmpFilename theTmpFilename, String... theArguments) {
-        Process aCommand;
-        try {
-            List<String> aArgumentList = new ArrayList<>();
-            for (int i = 0; i < theArguments.length; i++) {
-                aArgumentList.add(theArguments[i]);
-            }
-            if (theTmpFilename != null) {
-                aArgumentList.add(theTmpFilename.toString());
-            }
-            aCommand = new ProcessBuilder(aArgumentList).start();
-            aCommand.waitFor();
-        } catch (InterruptedException | IOException e) {
-            e.printStackTrace();
+    private static void process(TmpFilename theTmpFilename, String... theArguments) throws InterruptedException, IOException {
+        List<String> aArgumentList = new ArrayList<>();
+        Collections.addAll(aArgumentList, theArguments);
+        if (theTmpFilename != null) {
+            aArgumentList.add(theTmpFilename.toString());
         }
+        Process aCommand = new ProcessBuilder(aArgumentList).start();
+        aCommand.waitFor();
     }
 
     /**
      * Handle of a row request, with several work cases done
      */
-    static void execute(Row theRow) throws IOException {
-        Process aCommand;
+    private static void execute(Row theRow) throws InterruptedException, IOException {
+        long timeMillis = System.currentTimeMillis();
+        long timeMillisTmp = System.currentTimeMillis();
         TmpFilename aTmpFilename = new TmpFilename(theRow.itsOutfile); // Counter == 1
 
-        // Create the first build clip
-        process(aTmpFilename,
-                itsFfmpeg,
-                "-i", theRow.itsInfile,
-                "-c", "copy",
-                "-y",
-                "-ss", theRow.itsStart,
-                "-t", theRow.itsStop
-        );
+        // Starting
+        System.out.printf("\n\t%s\n", theRow.itsInfile);
+
+        // Create the first (start) build clip
+        processStart(aTmpFilename, theRow);
+        System.out.printf("\t\t[%02ds] First build clip file created! [%s]\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), aTmpFilename.toString());
 
         // Check if audio should be removed on the clip
         if (theRow.itsAudio != null && theRow.itsAudio.equalsIgnoreCase("off")) {
             TmpFilename aNext = aTmpFilename.next();
+            timeMillisTmp = System.currentTimeMillis();
             process(aNext,
                     itsFfmpeg,
                     "-i", aTmpFilename.toString(),
                     "-an",
                     "-y"
             );
+            System.out.printf("\t\t[%02ds] Removing audio!\t[%s]\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), aNext.toString());
             aTmpFilename = aNext;
         } else {
             // Add other audio to the clip
             if (theRow.itsAudio != null && !theRow.itsAudio.equalsIgnoreCase("off")) {
                 // The text has to be the sound file name (incl path)
                 TmpFilename aNext = aTmpFilename.next();
+                timeMillisTmp = System.currentTimeMillis();
                 process(aNext,
                         itsFfmpeg,
                         "-i", aTmpFilename.toString(),
@@ -229,32 +303,42 @@ public class Clips {
                         "-map", "0:v", "-map", "1:a", "-shortest",
                         "-y"
                 );
+                System.out.printf("\t\t[%02ds] Setting audio from: %s\t[%s]\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), theRow.itsAudio, aNext.toString());
                 aTmpFilename = aNext;
             }
         }
 
         // Check if the fade should be handled (in/out)
         if (theRow.itsFade != null) {
-            // Handle the audio to fade in/out
+            // Handle the audio to fade in/out (stop is required)
             TmpFilename aNext = aTmpFilename.next();
             Integer aFadeLength = Integer.decode(theRow.itsFade);
-            Integer aLength = Integer.decode(theRow.itsStop);
 
-            process(aNext,
-                    itsFfmpeg,
-                    "-i", aTmpFilename.toString(),
-                    "-y",
-                    "-af", String.format(
-                            "afade=t=in:ss=0:d=%d,afade=t=out:st=%d:d=%d",
-                            aFadeLength,
-                            aLength - aFadeLength,
-                            aFadeLength
-                    )
-            );
-            aTmpFilename = aNext;
+            // Create handling of stop or length time
+            int aStart = theRow.itsStart != null ? TimeType.getSeconds(theRow.itsStart) : 0;
+            Integer aLength = (theRow.itsLength != null) ? Integer.parseInt(theRow.itsLength) : TimeType.getSeconds(theRow.itsStop) - aStart;
+
+            if (theRow.itsAudio != null && !theRow.itsAudio.equalsIgnoreCase("off")) {
+                // Only needed if audio is NOT off
+                timeMillisTmp = System.currentTimeMillis();
+                process(aNext,
+                        itsFfmpeg,
+                        "-i", aTmpFilename.toString(),
+                        "-y",
+                        "-af", String.format(
+                                "afade=t=in:ss=0:d=%d,afade=t=out:st=%d:d=%d",
+                                aFadeLength,
+                                aLength - aFadeLength,
+                                aFadeLength
+                        )
+                );
+                System.out.printf("\t\t[%02ds] Fade in/out on the audio!\t[%s]\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), aNext.toString());
+                aTmpFilename = aNext;
+            }
 
             // Handle the video to fade in
             aNext = aTmpFilename.next();
+            timeMillisTmp = System.currentTimeMillis();
             process(aNext,
                     itsFfmpeg,
                     "-i", aTmpFilename.toString(),
@@ -264,10 +348,12 @@ public class Clips {
                             aFadeLength * 30 // Nr of frames (1s == 30frames)
                     )
             );
+            System.out.printf("\t\t[%02ds] Fade in on the video!\t[%s]\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), aNext.toString());
             aTmpFilename = aNext;
 
             // Handle the video to fade out
             aNext = aTmpFilename.next();
+            timeMillisTmp = System.currentTimeMillis();
             process(aNext,
                     itsFfmpeg,
                     "-i", aTmpFilename.toString(),
@@ -278,6 +364,7 @@ public class Clips {
                             aFadeLength * 30 // Nr of frames (1s == 30frames)
                     )
             );
+            System.out.printf("\t\t[%02ds] Fade out on the video!\t[%s]\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), aNext.toString());
             aTmpFilename = aNext;
         }
 
@@ -285,6 +372,7 @@ public class Clips {
         if (theRow.itsDeshark != null && theRow.itsDeshark > 0) {
             // Create the prepare file
             TmpFilename aNext = aTmpFilename.next();
+            timeMillisTmp = System.currentTimeMillis();
             process(null,
                     itsFfmpeg,
                     "-i", aTmpFilename.toString(),
@@ -296,8 +384,10 @@ public class Clips {
                     ),
                     "-f", "null", "-"
             );
+            System.out.printf("\t\t[%02ds] Creating CTRL file for deshark'ing!\t[%s]\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), aNext.toStringWithPostfix("trf"));
 
             // Execute deshark
+            timeMillisTmp = System.currentTimeMillis();
             process(aNext,
                     itsFfmpeg,
                     "-i", aTmpFilename.toString(),
@@ -312,23 +402,27 @@ public class Clips {
                     "-crf", "18",
                     "-acodec", "copy"
             );
+            System.out.printf("\t\t[%02ds] Creating deshark'd clip!\t[%s]\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), aNext.toString());
 
             aTmpFilename = aNext;
         }
 
         // Fix the resulting filename from the latest build clip
-        aCommand = new ProcessBuilder(
+        timeMillisTmp = System.currentTimeMillis();
+        new ProcessBuilder(
                 "cp",
                 aTmpFilename.toString(),
                 theRow.itsOutfile
         ).start();
+        System.out.printf("\t\t[%02ds] Copy from [%s] to [%s]!\n", ((System.currentTimeMillis() - timeMillisTmp) / 1000), aTmpFilename.toString(), theRow.itsOutfile);
 
+        System.out.printf("\t%s\t[[ %ds ]]\n", theRow.itsOutfile, ((System.currentTimeMillis() - timeMillis) / 1000));
     }
 
     /**
      * A Java startup method. Most requested due to test implementation
      */
-    static void run(String theInputFile) throws IOException {
+    static void run(String theInputFile) throws InterruptedException, IOException {
         Row[] aResult = new Clips().init(theInputFile);
         if (aResult.length > 0) {
             for (Row aRow : aResult) {
@@ -340,7 +434,7 @@ public class Clips {
     /**
      * The ordinary main, that's required a configurations file
      */
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws InterruptedException, IOException {
         System.out.println("Starting!");
         long timeMillis = System.currentTimeMillis();
         String aInputFile = "init.txt";
@@ -357,16 +451,12 @@ public class Clips {
                 run(aInputFile);
             }
         }
-        System.out.printf("Finished: [%ds]\n", ((System.currentTimeMillis() - timeMillis) / 1000));
+        System.out.printf("\nFinished: [[[ %ds ]]]\n", ((System.currentTimeMillis() - timeMillis) / 1000));
     }
 
-    static boolean isFileAvailable(String theFilename) {
+    private static boolean isFileAvailable(String theFilename) {
         // Check if the file exists!
         File aTmp = new File(theFilename);
-        if (aTmp.exists() && !aTmp.isDirectory()) {
-            return true;
-        }
-        System.out.println("File is NOT correct: " + theFilename);
-        return false;
+        return (aTmp.exists() && !aTmp.isDirectory());
     }
 }
